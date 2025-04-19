@@ -1,0 +1,116 @@
+<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- PWA für iOS -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Zutaten‑Rechner">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Zutaten‑Rechner</title>
+<style>
+  body{font-family:Arial,sans-serif;padding:20px}
+  input,select,button{width:100%;margin:5px 0;padding:8px;box-sizing:border-box}
+  .ingredient{margin-left:20px}
+  .summary{margin-top:20px;font-weight:bold}
+  table{width:100%;border-collapse:collapse;margin-top:20px}
+  th,td{border:1px solid #666;padding:5px;text-align:left}
+</style>
+</head><body>
+<h1>Zutaten‑Rechner</h1>
+<label>Einheit:
+  <select id="unitType">
+    <option value="g">Gewicht (g)</option>
+    <option value="Stk">Anzahl (Stk.)</option>
+  </select>
+</label>
+<label>Gesamtmenge:
+  <input type="number" id="totalAmount" value="1000" min="0">
+</label>
+<button id="addRoot">+ Zutat hinzufügen</button>
+<div id="list"></div>
+<button id="showTable">Tabelle anzeigen</button>
+<div id="summary" class="summary"></div>
+<script>
+  const listEl = document.getElementById('list'),
+        unitEl = document.getElementById('unitType'),
+        totalEl = document.getElementById('totalAmount');
+  let nodes = [];
+  document.getElementById('addRoot').onclick = () => {
+    const id = Date.now();
+    nodes.push({id, parent: null, name:'', pct:0});
+    renderList();
+  };
+  function renderList(){
+    listEl.innerHTML = '';
+    function renderNode(n, d=0){
+      const div = document.createElement('div');
+      div.className = d?'ingredient':'';
+      div.style.marginLeft = d*20+'px';
+      div.innerHTML = `
+        <input placeholder="Name" value="${n.name}"
+               onchange="update(${n.id},'name',this.value)">
+        <input type="number" placeholder="% rel. Eltern" min="0" max="100"
+               value="${n.pct}"
+               onchange="update(${n.id},'pct',this.value)">
+        <button onclick="addChild(${n.id})">+ Kind</button>
+        <button onclick="removeNode(${n.id})">×</button>`;
+      listEl.appendChild(div);
+      nodes.filter(c=>c.parent===n.id)
+           .forEach(c=>renderNode(c,d+1));
+    }
+    nodes.filter(n=>n.parent===null)
+         .forEach(n=>renderNode(n));
+  }
+  function addChild(pid){
+    const id = Date.now()+Math.random();
+    nodes.push({id, parent:pid, name:'', pct:0});
+    renderList();
+  }
+  function update(id, field, v){
+    const n = nodes.find(x=>x.id===id);
+    n[field] = field==='pct'?parseFloat(v)||0:v;
+  }
+  function removeNode(id){
+    const toRm=[id];
+    for(let i=0;i<toRm.length;i++)
+      nodes.filter(x=>x.parent===toRm[i])
+           .forEach(c=>toRm.push(c.id));
+    nodes = nodes.filter(x=>!toRm.includes(x.id));
+    renderList();
+  }
+  document.getElementById('showTable').onclick = () => {
+    const absPct={}, absQty={}, total=parseFloat(totalEl.value)||0;
+    function walk(n){
+      const par = n.parent===null?100:absPct[n.parent];
+      absPct[n.id] = par*n.pct/100;
+      absQty[n.id] = total*absPct[n.id]/100;
+      nodes.filter(c=>c.parent===n.id).forEach(walk);
+    }
+    nodes.filter(n=>n.parent===null).forEach(walk);
+    let html='<table><tr><th>Zutat</th><th>% rel</th><th>% abs</th><th>Menge ('+unitEl.value+')</th></tr>';
+    function row(n,d=0){
+      html+='<tr>'+
+            `<td style="padding-left:${d*20}px">${n.name||'[kein Name]'}</td>`+
+            `<td>${n.pct.toFixed(2)}%</td>`+
+            `<td>${absPct[n.id].toFixed(2)}%</td>`+
+            `<td>${absQty[n.id].toFixed(1)}</td>`+
+            '</tr>';
+      nodes.filter(c=>c.parent===n.id).forEach(c=>row(c,d+1));
+    }
+    nodes.filter(n=>n.parent===null).forEach(n=>row(n));
+    html+='</table>';
+    listEl.innerHTML = html;
+    const sum = Object.values(absPct).reduce((s,v)=>s+v,0).toFixed(2);
+    document.getElementById('summary').textContent =
+      `Summe aller absoluten %: ${sum}%   |   Gesamt: ${total}${unitEl.value}`;
+    alert('Zum PDF speichern: In Safari „Teilen → Drucken → Als PDF sichern“');
+  };
+</script>
+<!-- Service Worker Registration -->
+<script>
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker
+             .register('sw.js')
+             .catch(console.error);
+  }
+</script>
+</body></html>
